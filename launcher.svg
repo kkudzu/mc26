@@ -1,0 +1,129 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
+  <style>
+    .bg { fill: #1e1e2e; }
+    .card { fill: #313244; rx: 16px; }
+    .btn { fill: #89b4fa; cursor: pointer; transition: fill 0.2s; }
+    .btn:hover { fill: #b4befe; }
+    .title { fill: #cdd6f4; font-family: system-ui, -apple-system, sans-serif; font-size: 22px; font-weight: bold; text-anchor: middle; }
+    .status { fill: #a6adc8; font-family: system-ui, -apple-system, sans-serif; font-size: 14px; text-anchor: middle; }
+    .btn-text { fill: #11111b; font-family: system-ui, -apple-system, sans-serif; font-size: 16px; font-weight: bold; text-anchor: middle; pointer-events: none; }
+  </style>
+
+  <rect width="100%" height="100%" class="bg" />
+  <rect x="50" y="50" width="500" height="300" class="card" />
+
+  <text x="300" y="120" class="title">Eaglercraft Offline Launcher</text>
+  <text x="300" y="160" id="statusText" class="status">Ready to load game...</text>
+
+  <g id="launchGroup" cursor="pointer">
+    <rect x="200" y="220" width="200" height="50" rx="10" class="btn" />
+    <text x="300" y="251" class="btn-text">Download &amp; Launch</text>
+  </g>
+
+  <script type="text/javascript">
+    <![CDATA[
+    (function() {
+      const RAW_URL = "https://raw.githubusercontent.com/slungus57/eaglercraft/master/index.html";
+      const BASE_URL = "https://raw.githubusercontent.com/slungus57/eaglercraft/master/";
+      const DB_NAME = "EaglercraftCacheDB";
+      const STORE_NAME = "game_files";
+      const GAME_KEY = "eaglercraft_index";
+
+      const statusText = document.getElementById("statusText");
+      const launchGroup = document.getElementById("launchGroup");
+
+      function updateStatus(msg) {
+        if (statusText) statusText.textContent = msg;
+      }
+
+      function openDB() {
+        return new Promise((resolve, reject) => {
+          const request = indexedDB.open(DB_NAME, 1);
+          request.onupgradeneeded = (e) => {
+            const db = e.target.result;
+            if (!db.objectStoreNames.contains(STORE_NAME)) {
+              db.createObjectStore(STORE_NAME);
+            }
+          };
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+      }
+
+      async function getStoredGame(db) {
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(STORE_NAME, "readonly");
+          const store = tx.objectStore(STORE_NAME);
+          const req = store.get(GAME_KEY);
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      async function saveGame(db, content) {
+        return new Promise((resolve, reject) => {
+          const tx = db.transaction(STORE_NAME, "readwrite");
+          const store = tx.objectStore(STORE_NAME);
+          const req = store.put(content, GAME_KEY);
+          req.onsuccess = () => resolve();
+          req.onerror = () => reject(req.error);
+        });
+      }
+
+      function launchInAboutBlank(htmlContent) {
+        const win = window.open("about:blank", "_blank");
+        if (!win) {
+          updateStatus("Pop-up blocked! Allow pop-ups and try again.");
+          return;
+        }
+
+        let processedHtml = htmlContent;
+        if (!processedHtml.includes("<base ")) {
+          processedHtml = processedHtml.replace(
+            /<head[^>]*>/i,
+            `$&<base href="${BASE_URL}">`
+          );
+        }
+
+        win.document.open();
+        win.document.write(processedHtml);
+        win.document.close();
+        updateStatus("Launched successfully!");
+      }
+
+      async function handleLaunch() {
+        try {
+          updateStatus("Opening IndexedDB...");
+          const db = await openDB();
+
+          updateStatus("Checking cached version...");
+          let cachedHtml = await getStoredGame(db);
+
+          if (cachedHtml) {
+            updateStatus("Loaded from IndexedDB! Launching...");
+            launchInAboutBlank(cachedHtml);
+          } else {
+            updateStatus("Downloading from GitHub...");
+            const response = await fetch(RAW_URL);
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status}`);
+            }
+            const text = await response.text();
+
+            updateStatus("Saving to IndexedDB...");
+            await saveGame(db, text);
+
+            updateStatus("Launching...");
+            launchInAboutBlank(text);
+          }
+        } catch (err) {
+          console.error(err);
+          updateStatus("Error: " + err.message);
+        }
+      }
+
+      launchGroup.addEventListener("click", handleLaunch);
+    })();
+    ]]>
+  </script>
+</svg>
