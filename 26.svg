@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; margin: 0; padding: 0; display: block;" preserveAspectRatio="none">
+  <foreignObject width="100%" height="100%" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;">
+    <html xmlns="http://www.w3.org/1999/xhtml" style="width: 100%; height: 100%; margin: 0; padding: 0;">
+      <body style="width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #000; color: #fff; font-family: sans-serif;">
+        <style>
+          #app-root { 
+            width: 100%; 
+            height: 100%; 
+            display: block; 
+            position: relative; 
+          }
+          #status-container { 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center; 
+            width: 100%; 
+            height: 100%; 
+          }
+          .spinner { 
+            border: 4px solid #333; 
+            border-top: 4px solid #3498db; 
+            border-radius: 50%; 
+            width: 40px; 
+            height: 40px; 
+            animation: spin 1s linear infinite; 
+            margin-bottom: 20px; 
+          }
+          @keyframes spin { 
+            0% { transform: rotate(0deg); } 
+            100% { transform: rotate(360deg); } 
+          }
+          iframe { 
+            position: absolute; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            border: none; 
+            display: block; 
+            margin: 0;
+            padding: 0;
+          }
+        </style>
+        
+        <div id="app-root">
+          <div id="status-container">
+            <div class="spinner" id="spinner"></div>
+            <div id="status">Initializing IndexedDB...</div>
+          </div>
+        </div>
+
+        <script type="text/javascript">
+          <![CDATA[
+          (function () {
+            const DB_NAME = 'EaglercraftCacheDB';
+            const DB_VERSION = 1;
+            const STORE_NAME = 'cachedFiles';
+            const FILE_KEY = 'index.html';
+            const RAW_URL = 'https://raw.githubusercontent.com/slungus57/eaglercraft/master/index.html';
+
+            function openDB() {
+              return new Promise((resolve, reject) => {
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onupgradeneeded = (e) => {
+                  const db = e.target.result;
+                  if (!db.objectStoreNames.contains(STORE_NAME)) {
+                    db.createObjectStore(STORE_NAME);
+                  }
+                };
+                request.onsuccess = (e) => resolve(e.target.result);
+                request.onerror = (e) => reject(e.target.error);
+              });
+            }
+
+            function getFile(db, key) {
+              return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readonly');
+                const store = tx.objectStore(STORE_NAME);
+                const request = store.get(key);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.target.error);
+              });
+            }
+
+            function saveFile(db, key, data) {
+              return new Promise((resolve, reject) => {
+                const tx = db.transaction(STORE_NAME, 'readwrite');
+                const store = tx.objectStore(STORE_NAME);
+                const request = store.put(data, key);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.target.error);
+              });
+            }
+
+            async function init() {
+              const statusEl = document.getElementById('status');
+              const spinnerEl = document.getElementById('spinner');
+              const rootEl = document.getElementById('app-root');
+
+              try {
+                statusEl.textContent = 'Checking IndexedDB Cache...';
+                const db = await openDB();
+                let htmlContent = await getFile(db, FILE_KEY);
+
+                if (!htmlContent) {
+                  statusEl.textContent = 'Downloading from GitHub...';
+                  const response = await fetch(RAW_URL);
+                  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                  htmlContent = await response.text();
+                  statusEl.textContent = 'Saving to IndexedDB Cache...';
+                  await saveFile(db, FILE_KEY, htmlContent);
+                } else {
+                  statusEl.textContent = 'Loaded from Cache!';
+                }
+
+                statusEl.textContent = 'Launching Game...';
+
+                const iframe = document.createElement('iframe');
+                iframe.setAttribute('allow', 'autoplay; fullscreen; clipboard-read; clipboard-write; pointer-lock');
+                
+                // Clear the loader and attach the iframe to the DOM
+                rootEl.innerHTML = '';
+                rootEl.appendChild(iframe);
+
+                // Wait two animation frames to guarantee the browser calculates the physical layout limits
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+                    iframe.src = URL.createObjectURL(blob);
+                  });
+                });
+
+              } catch (err) {
+                if (spinnerEl) spinnerEl.style.display = 'none';
+                statusEl.textContent = 'Error: ' + err.message;
+                console.error(err);
+              }
+            }
+
+            if (document.readyState === 'complete' || document.readyState === 'interactive') {
+              init();
+            } else {
+              window.addEventListener('DOMContentLoaded', init);
+            }
+          })();
+          ]]>
+        </script>
+      </body>
+    </html>
+  </foreignObject>
+</svg>
